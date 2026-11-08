@@ -1,0 +1,54 @@
+#!/bin/bash
+# Project Zomboid on native ARM64 Linux. Installed by pz-arm64-linux.
+PZA=${PZ_ARM64_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/pz-arm64}
+# shellcheck source=/dev/null
+. "$PZA/config.env" || exit 1
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/pz-arm64
+mkdir -p "$STATE"
+
+note() { echo "$*" >&2; command -v notify-send >/dev/null && notify-send -a "Project Zomboid" "Project Zomboid" "$*"; }
+
+# After a game update, rebuild the native layer if anything it depends on changed.
+if [ "$("$PZA/tools/stamp.sh")" != "$(cat "$PZA/natives.stamp" 2>/dev/null)" ]; then
+  note "Game update detected: re-patching native libraries (about a minute)…"
+  {
+    V=$("$JAVA_HOME/bin/javap" -constants -cp "$GAME/projectzomboid.jar" org.lwjgl.Version |
+      awk -F'= |;' '/VERSION_MAJOR/{a=$2} /VERSION_MINOR/{b=$2} /VERSION_REVISION/{c=$2} END{print a"."b"."c}')
+    if [ "$V" != "$(cat "$PZA/lwjgl/VERSION" 2>/dev/null)" ]; then "$PZA/tools/fetch-lwjgl.sh" || exit 1; fi
+    "$PZA/tools/build-natives.sh"
+  } > "$STATE/rebuild.log" 2>&1
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    note "Re-patching failed. Details: $STATE/rebuild.log"
+    tail -5 "$STATE/rebuild.log" >&2
+    exit 1
+  fi
+fi
+
+# Expose subscribed Workshop mods through the local mods folder, so they also
+# load offline. Stale links from unsubscribed items are removed.
+W=${GAME%/common/*}/workshop/content/108600
+M=$HOME/Zomboid/mods
+mkdir -p "$M"
+for l in "$M"/*; do
+  [ -L "$l" ] && [[ $(readlink "$l") == "$W"/* ]] && [ ! -e "$l" ] && rm -f "$l"
+done
+for d in "$W"/*/mods/*/; do
+  [ -d "$d" ] || continue
+  n=$(basename "$d")
+  [ -e "$M/$n" ] || ln -s "${d%/}" "$M/$n"
+done
+
+# Online play and Workshop need the Steam client running in the same VM.
+if [ -z "$PZ_NOSTEAM" ] && [ -n "$STEAM_CMD" ] && ! pgrep -f 'muvm.*steam' >/dev/null && ! pgrep -x steam >/dev/null; then
+  setsid -f bash -c "$STEAM_CMD -silent" >/dev/null 2>&1
+  sleep 3
+fi
+
+if [ "$USE_MUVM" = 1 ]; then
+  ENVS=()
+  while IFS='=' read -r k _; do ENVS+=(-e "$k=${!k}"); done < <(env | grep -E '^PZ_[A-Z0-9_]*=')
+  exec muvm "${ENVS[@]}" -- "$PZA/run-pz.sh" "$@"
+else
+  exec "$PZA/run-pz.sh" "$@"
+fi
