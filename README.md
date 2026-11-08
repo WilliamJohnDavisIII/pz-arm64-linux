@@ -66,17 +66,21 @@ Set these when running `zomboid`:
 | `PZ_UI_SCALE=2` | Scale ZombieBuddy's approval dialog on HiDPI screens |
 | `PZ_MEMORY=4096m` | Java heap size (default `3072m`) |
 | `PZ_FMOD_DEBUG=1` | Use FMOD's logging libraries |
+| `PZ_FMOD_NATIVE_FORMAT=1` | Keep the game's own 5.1 / 32 kHz audio format instead of 48 kHz stereo |
 | `PZ_JAVA_OPTS="..."` | Extra JVM options |
 
 The log is `~/.local/state/pz-arm64/run.log`, with `run.log.prev` for the run before.
 
 ## Known issues
 
-- **Apple Silicon speakers can go silent at game launch.** On the M1, `speakersafetyd` (the speaker-protection daemon) sometimes crashes with `Negative power, bad ivsense data?` when the game opens its audio. When it does, the kernel locks the speakers to protect them. In testing this happened on roughly half of launches. The cause isn't known yet. Headphones keep working. To restore the speakers, run:
-  ```sh
-  sudo systemctl reset-failed speakersafetyd && sudo systemctl start speakersafetyd
-  ```
-  If that doesn't help, reboot. **Never bypass speaker protection.** `--pipewire-rule` installs an experimental PipeWire rule for the game's audio stream: it sets a normal latency and stops the stereo downmix clipping. It does **not** prevent this crash.
+- **Apple Silicon speakers can go silent at game launch.** On the M1, `speakersafetyd` (the speaker-protection daemon) sometimes crashed with `Negative power, bad ivsense data?` when the game opened its audio. When that happens, the kernel locks the speakers to protect them. Before the current mitigation, this happened on roughly half of launches. Headphones keep working.
+  - **Current mitigation (unconfirmed):** the game asks FMOD for an unusual 5.1, 32 kHz output, so the shim makes FMOD output plain 48 kHz stereo instead. Since then there have been no crashes, but over only a few launches so far. `PZ_FMOD_NATIVE_FORMAT=1` restores the game's own format.
+  - **If it still happens,** restore the speakers with:
+    ```sh
+    sudo systemctl reset-failed speakersafetyd && sudo systemctl start speakersafetyd
+    ```
+    If that doesn't help, reboot. **Never bypass speaker protection.**
+  - `--pipewire-rule` installs an experimental PipeWire rule for the game's audio stream: it sets a normal latency and stops the downmix clipping. On its own, it did **not** prevent the crash.
 - **Restarting PipeWire** can make some apps (Electron apps, for example) lose their microphone until they're restarted.
 - **Mods** that patch Java (through ZombieBuddy) must match your game build, just as on any other platform.
 

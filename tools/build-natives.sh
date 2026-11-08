@@ -56,6 +56,7 @@ for s in sysconf pthread_attr_init pthread_mutex_init pthread_cond_init pthread_
 done
 cp "$B/renames.txt" "$B/renames-fmod.txt"
 echo "FMOD_System_GetVersion pzsh_FMOD_System_GetVersion" >> "$B/renames-fmod.txt"
+echo "FMOD_System_SetSoftwareFormat pzsh_FMOD_System_SetSoftwareFormat" >> "$B/renames-fmod.txt"
 for f in "$AND"/*.so; do
   b=$(basename "$f"); R=$B/renames.txt
   [ "$b" = libfmodintegration64.so ] && R=$B/renames-fmod.txt

@@ -233,3 +233,21 @@ EXPORT int pzsh_pthread_cond_wait(void *c, pthread_mutex_t *m) { return pthread_
 EXPORT int pzsh_pthread_cond_timedwait(void *c, pthread_mutex_t *m, const struct timespec *t) { return pthread_cond_timedwait(pz_cond(c, 1), m, t); }
 EXPORT int pzsh_pthread_cond_signal(void *c) { return pthread_cond_signal(pz_cond(c, 1)); }
 EXPORT int pzsh_pthread_cond_broadcast(void *c) { return pthread_cond_broadcast(pz_cond(c, 1)); }
+
+// PZ asks FMOD for 32 kHz 5.1 output. On Apple Silicon that unusual stream,
+// remixed by PipeWire, coincided with speakersafetyd crashing at launch. Ask
+// for plain 48 kHz stereo instead; FMOD does the downmix itself.
+// PZ_FMOD_NATIVE_FORMAT=1 keeps the game's own format.
+EXPORT int pzsh_FMOD_System_SetSoftwareFormat(void *sys, int rate, int mode, int raw) {
+    static int (*real)(void *, int, int, int);
+    if (!real) {
+        const char *names[] = { "libfmod.so.14", "libfmodL.so.14", "libfmod.so" };
+        for (int i = 0; i < 3 && !real; i++) {
+            void *h = dlopen(names[i], RTLD_NOW | RTLD_NOLOAD);
+            if (h) real = (int (*)(void *, int, int, int))dlsym(h, "FMOD_System_SetSoftwareFormat");
+        }
+        if (!real) { warn("FMOD_System_SetSoftwareFormat not found"); return 1; }
+    }
+    if (!getenv("PZ_FMOD_NATIVE_FORMAT")) { rate = 48000; mode = 3 /* FMOD_SPEAKERMODE_STEREO */; raw = 0; }
+    return real(sys, rate, mode, raw);
+}
