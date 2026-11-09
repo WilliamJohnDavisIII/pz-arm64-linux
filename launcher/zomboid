@@ -26,18 +26,31 @@ if [ "$("$PZA/tools/stamp.sh")" != "$(cat "$PZA/natives.stamp" 2>/dev/null)" ]; 
 fi
 
 # Expose subscribed Workshop mods through the local mods folder, so they also
-# load offline. Stale links from unsubscribed items are removed.
+# load offline. These must be real folders, not symlinks: the game resolves
+# symlinked script files to a broken path, and one failed script file stops
+# every later mod script from loading. rsync re-syncs each mod on every launch
+# as hard links (no extra disk space; a plain copy if ~/Zomboid is on another
+# filesystem). Folders managed this way are listed in $HL; others are yours
+# and left alone. Mods you unsubscribe from are removed.
 W=${GAME%/common/*}/workshop/content/108600
 M=$HOME/Zomboid/mods
-mkdir -p "$M"
-for l in "$M"/*; do
-  [ -L "$l" ] && [[ $(readlink "$l") == "$W"/* ]] && [ ! -e "$l" ] && rm -f "$l"
+HL=$STATE/workshop-mods.txt
+mkdir -p "$M"; touch "$HL"
+for l in "$M"/*; do   # symlinks made by older versions of this launcher
+  [ -L "$l" ] && [[ $(readlink "$l") == "$W"/* ]] && rm -f "$l"
 done
+declare -A want
 for d in "$W"/*/mods/*/; do
   [ -d "$d" ] || continue
   n=$(basename "$d")
-  [ -e "$M/$n" ] || ln -s "${d%/}" "$M/$n"
+  if [ -e "$M/$n" ] && ! grep -qxF "$n" "$HL"; then continue; fi
+  want[$n]=1
+  rsync -a --delete --link-dest="${d%/}/" "${d%/}/" "$M/$n/"
 done
+while IFS= read -r n; do
+  [ -n "$n" ] && [ -z "${want[$n]}" ] && [ -d "$M/$n" ] && rm -rf -- "${M:?}/$n"
+done < "$HL"
+printf '%s\n' "${!want[@]}" | sort > "$HL"
 
 # Online play and Workshop need the Steam client running in the same VM.
 if [ -z "$PZ_NOSTEAM" ] && [ -n "$STEAM_CMD" ] && ! pgrep -f 'muvm.*steam' >/dev/null && ! pgrep -x steam >/dev/null; then
@@ -48,7 +61,12 @@ fi
 if [ "$USE_MUVM" = 1 ]; then
   ENVS=()
   while IFS='=' read -r k _; do ENVS+=(-e "$k=${!k}"); done < <(env | grep -E '^PZ_[A-Z0-9_]*=')
-  exec muvm "${ENVS[@]}" -- "$PZA/run-pz.sh" "$@"
+  # muvm's default VM size is 80% of RAM. Linux inside the VM keeps game files
+  # it has read in its cache, and the host cannot reclaim that memory, so a big
+  # VM slowly takes over the host until systemd-oomd kills the game. Cap it at
+  # 7 GB (or 60% of RAM on smaller machines); PZ_VM_MEM (MiB) overrides.
+  VMMEM=${PZ_VM_MEM:-$(awk '/^MemTotal/{m=int($2/1024*0.6); print (m<7168?m:7168)}' /proc/meminfo)}
+  exec muvm --mem="$VMMEM" "${ENVS[@]}" -- "$PZA/run-pz.sh" "$@"
 else
   exec "$PZA/run-pz.sh" "$@"
 fi

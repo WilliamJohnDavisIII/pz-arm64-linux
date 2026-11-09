@@ -48,7 +48,7 @@ USE_MUVM=0; [ "$PAGE" != 4096 ] && USE_MUVM=1
 echo "  page size $PAGE: $([ $USE_MUVM = 1 ] && echo 'the game will run inside muvm (4K-page VM)' || echo 'running directly, no VM needed (untested)')"
 
 MISSING=()
-for c in gcc g++ patchelf python3 curl unzip objdump pkg-config; do command -v $c >/dev/null || MISSING+=("$c"); done
+for c in gcc g++ patchelf python3 curl unzip rsync objdump pkg-config; do command -v $c >/dev/null || MISSING+=("$c"); done
 [ $USE_MUVM = 1 ] && ! command -v muvm >/dev/null && MISSING+=(muvm)
 for p in libavformat libavcodec libswscale libavutil x11 gl; do pkg-config --exists $p 2>/dev/null || MISSING+=("$p (dev files)"); done
 
@@ -64,9 +64,9 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   echo "  missing: ${MISSING[*]}"
   echo
   if command -v pacman >/dev/null; then
-    echo "  Install with:  sudo pacman -S --needed base-devel patchelf python curl unzip ffmpeg libx11 mesa jdk25-openjdk muvm"
+    echo "  Install with:  sudo pacman -S --needed base-devel patchelf python curl unzip rsync ffmpeg libx11 mesa jdk25-openjdk muvm"
   elif command -v dnf >/dev/null; then
-    echo "  Install with:  sudo dnf install gcc gcc-c++ patchelf python3 curl unzip binutils pkgconf-pkg-config \\"
+    echo "  Install with:  sudo dnf install gcc gcc-c++ patchelf python3 curl unzip rsync binutils pkgconf-pkg-config \\"
     echo "                   libavformat-free-devel libavcodec-free-devel libswscale-free-devel libavutil-free-devel \\"
     echo "                   libX11-devel mesa-libGL-devel java-25-openjdk-devel muvm"
   fi
