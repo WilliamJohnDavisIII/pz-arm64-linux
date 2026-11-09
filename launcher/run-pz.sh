@@ -48,7 +48,7 @@ export LD_PRELOAD=$PZA/natives/libpztls.so${LD_PRELOAD:+:$LD_PRELOAD}
 exec "$JAVA_HOME/bin/java" \
   -Djava.awt.headless=true --enable-native-access=ALL-UNNAMED \
   --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED \
-  -Xmx${PZ_MEMORY:-3072m} -Dzomboid.steam=$STEAM -Dzomboid.znetlog=1 \
+  -Xmx${PZ_MEMORY:-4096m} -Dzomboid.steam=$STEAM -Dzomboid.znetlog=1 \
   -Djava.library.path="$PZA/natives" -Djava.security.egd=file:/dev/./urandom \
   -XX:+UseZGC -XX:-OmitStackTraceInFastThrow $ZB $PZ_JAVA_OPTS \
   -cp "$PZA/lwjgl/lwjgl-arm64.jar:.:projectzomboid.jar" \

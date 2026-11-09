@@ -64,7 +64,8 @@ Set these when running `zomboid`:
 | `PZ_NOSTEAM=1` | Start offline, without Steam |
 | `PZ_NOZB=1` | Don't load ZombieBuddy |
 | `PZ_UI_SCALE=2` | Scale ZombieBuddy's approval dialog on HiDPI screens |
-| `PZ_MEMORY=4096m` | Java heap size (default `3072m`) |
+| `PZ_MEMORY=5120m` | Java heap size (default `4096m`) |
+| `PZ_VM_MEM=8192` | VM memory in MiB (default 7168, or 60% of RAM if less) |
 | `PZ_FMOD_DEBUG=1` | Use FMOD's logging libraries |
 | `PZ_FMOD_NATIVE_FORMAT=1` | Keep the game's own 5.1 / 32 kHz audio format instead of 48 kHz stereo |
 | `PZ_JAVA_OPTS="..."` | Extra JVM options |
