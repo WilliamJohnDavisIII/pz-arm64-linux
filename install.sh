@@ -45,7 +45,7 @@ step "Checking the system"
 [ "$(uname -m)" = aarch64 ] || die "this is for ARM64 (aarch64) Linux; this machine is $(uname -m)."
 PAGE=$(getconf PAGESIZE)
 USE_MUVM=0; [ "$PAGE" != 4096 ] && USE_MUVM=1
-echo "  page size $PAGE: $([ $USE_MUVM = 1 ] && echo 'the game will run inside muvm (4K-page VM)' || echo 'running directly, no VM needed (untested)')"
+echo "  page size $PAGE: $([ $USE_MUVM = 1 ] && echo 'single-player runs directly (pzldr), online play inside muvm (4K-page VM)' || echo 'running directly, no VM needed (untested)')"
 
 MISSING=()
 for c in gcc g++ patchelf python3 curl unzip rsync objdump pkg-config; do command -v $c >/dev/null || MISSING+=("$c"); done
@@ -141,6 +141,7 @@ mkdir -p "$PZA" "$BIN"
 rm -rf "$PZA/src" "$PZA/tools"
 cp -r "$REPO/src" "$REPO/tools" "$PZA/"
 install -m755 "$REPO/launcher/run-pz.sh" "$PZA/run-pz.sh"
+install -m755 "$REPO/launcher/vm-cachetrim.sh" "$PZA/vm-cachetrim.sh"
 install -m755 "$REPO/launcher/zomboid" "$BIN/zomboid"
 MESA_DIR=$(. "$PZA/config.env" 2>/dev/null; echo "${MESA_DIR:-}")
 write_config() {
@@ -213,16 +214,17 @@ fi
 
 if [ -n "$DESKTOP" ]; then
   mkdir -p "$APPS"
-  cat > "$APPS/pz-arm64.desktop" <<EOF
-[Desktop Entry]
-Name=Project Zomboid
-Comment=Native ARM64 (pz-arm64-linux)
-Exec=$BIN/zomboid
-Icon=$GAME/projectzomboid.png
-Terminal=false
-Type=Application
-Categories=Game;
-EOF
+  entry() {  # $1 file, $2 name, $3 comment, $4 exec
+    printf '%s\n' "[Desktop Entry]" "Name=$2" "Comment=$3" "Exec=$4" "Icon=$GAME/projectzomboid.png" \
+      "Terminal=false" "Type=Application" "Categories=Game;" > "$APPS/$1"
+  }
+  if [ -n "$STEAM_CMD" ]; then
+    entry pz-arm64.desktop "Project Zomboid" "Single-player, native ARM64 (pz-arm64-linux)" "env PZ_NOSTEAM=1 $BIN/zomboid"
+    entry pz-arm64-online.desktop "Project Zomboid (Online)" "Steam, multiplayer and Workshop (pz-arm64-linux)" "$BIN/zomboid"
+  else
+    rm -f "$APPS/pz-arm64-online.desktop"
+    entry pz-arm64.desktop "Project Zomboid" "Native ARM64 (pz-arm64-linux)" "$BIN/zomboid"
+  fi
 fi
 
 step "Done"

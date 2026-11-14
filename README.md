@@ -4,7 +4,7 @@ Run **Project Zomboid (Build 42)** natively on **ARM64 Linux**, such as Apple Si
 
 Project Zomboid has no official ARM64 Linux build, and on Asahi the x86 version doesn't work under emulation (FEX): Java's JIT compiler crashes. However, the game ships **Android ARM64 builds of its own native libraries**. This project makes those libraries run on regular Linux and starts the game on a native ARM64 Java.
 
-> Tested on one machine: a MacBook Air M1 running Asahi Linux (Arch Linux ARM based, Omarchy), game build 42.21. Other distros and ARM64 machines are untested. Reports are welcome.
+> Tested on one machine: a MacBook Air M1 running Asahi Linux (Arch Linux ARM based, Omarchy), game builds 42.21 and 42.22. Other distros and ARM64 machines are untested. Reports are welcome.
 
 ## Install
 
@@ -25,9 +25,20 @@ The installer is safe to rerun. Run `./install.sh --help` for options, such as `
 
 ### Requirements
 - ARM64 (aarch64) Linux.
-- A kernel with **16K pages** (Asahi) also needs **[muvm](https://github.com/AsahiLinux/muvm)**, a lightweight VM with 4K pages, because the game's Android libraries require 4K pages. On 4K-page kernels the game runs without muvm, but that's untested.
+- A kernel with **16K pages** (Asahi): single-player runs directly on the host. Online play also needs **[muvm](https://github.com/AsahiLinux/muvm)**, a lightweight VM with 4K pages, because Steam runs inside it. On 4K-page kernels the game runs without muvm, but that's untested.
 - gcc/g++, patchelf, python3, curl, unzip, binutils, pkg-config, the ffmpeg and X11/GL development files, and a **Java 25 JDK**.
 - For online play: Steam's native ARM64 client (`~/.local/share/Steam/linuxarm64/steamclient.so`). Without it, the game runs offline.
+
+## Two ways to start it
+
+On a 16K-page kernel the installer adds two app-launcher entries:
+
+| Entry | Runs | Use it for |
+|---|---|---|
+| **Project Zomboid** | directly on the host, no VM | single-player |
+| **Project Zomboid (Online)** | inside muvm, with Steam | multiplayer, Steam login, Workshop |
+
+Without a VM the game uses about a third of the memory (on the M1: 3.5 GB on average and 6 GB at peak with a 72,000-cell map, against 10 GB or more in the VM), and graphics go straight to the GPU through your system Mesa.
 
 ## What works
 
@@ -45,8 +56,10 @@ The installer is safe to rerun. Run `./install.sh --help` for options, such as `
 ## How it works
 
 - **Android libraries on Linux.** The installer copies the game's `natives/android/arm64-v8a` libraries and patches them with `patchelf`. A small compatibility library, `libpzshim.so`, covers the places where Android's C library (bionic) differs from glibc: stdio, `sysconf`, network and terminal structures, and thread-structure sizes and alignment. `libpztls.so` reserves the thread-local slot that bionic reads its stack canary from.
+- **No VM on 16K-page kernels.** The game's Android libraries are laid out for 4K pages, so glibc's loader refuses them on a 16K-page kernel. `src/pzldr` is a small loader that does it instead: it maps each library into 16K-aligned memory, applies its relocations, resolves its imports and runs its initialisers. For each library, `tools/gen-stub.py` builds a normal stub with the same `Java_*` functions; when Java loads the stub, it loads the real library through pzldr and forwards every call to it. The stubs live in `natives16k/`.
+- **Memory.** The game's default garbage collector (ZGC) stores every object reference in 8 bytes. The launcher uses G1 instead, which stores them in 4, plus compact object headers, and hands unused memory back every 30 seconds. On big maps this saves gigabytes. In the VM, `vm-cachetrim.sh` drops the VM's file cache every 15 seconds, because the VM never hands that memory back to the host on its own.
 - **LWJGL.** Official linux-arm64 LWJGL libraries are downloaded from Maven Central for the game's exact LWJGL version, and checked against the checksums the game's own jar records.
-- **Graphics.** On some systems, Mesa hangs creating an OpenGL context inside muvm. The installer tests this. If it fails on Arch, it downloads the repo's stable Mesa package, verifies its signature, and uses it privately for the game only. Nothing is installed system-wide.
+- **Graphics.** Without the VM, the game uses your system Mesa. On some systems, Mesa hangs creating an OpenGL context inside muvm. The installer tests this. If it fails on Arch, it downloads the repo's stable Mesa package, verifies its signature, and uses it privately for the game only. Nothing is installed system-wide.
 - **Menu videos.** The game's videos are Bink 1, which has no ARM64 library. `binkplayer.c` reimplements the game's video interface on ffmpeg.
 - **Audio.** These are FMOD's ARM64 libraries from your download. The game insists on the exact FMOD version it was built with, which the installer reads from the game's files, so the shim reports that version. FMOD releases within a minor series (2.03.x) are binary compatible.
 - **Steam.** The game's Steam bridge (`libZNetJNI64.so`) is x86-only, so `src/steam` is a from-scratch ARM64 reimplementation. It talks to Valve's native ARM64 `steamclient.so` and is wire-compatible with normal x86 clients and servers.
@@ -61,11 +74,13 @@ Set these when running `zomboid`:
 
 | Variable | Effect |
 |---|---|
-| `PZ_NOSTEAM=1` | Start offline, without Steam |
+| `PZ_NOSTEAM=1` | Start offline, without Steam (on 16K-page kernels: without the VM) |
+| `PZ_USE_VM=1` | With `PZ_NOSTEAM=1`, run single-player inside the VM anyway |
 | `PZ_NOZB=1` | Don't load ZombieBuddy |
 | `PZ_UI_SCALE=2` | Scale ZombieBuddy's approval dialog on HiDPI screens |
 | `PZ_MEMORY=5120m` | Java heap size (default `4096m`) |
-| `PZ_VM_MEM=8192` | VM memory in MiB (default 7168, or 60% of RAM if less) |
+| `PZ_VM_MEM=9216` | VM memory in MiB (default 8192, or 60% of RAM if less) |
+| `PZ_GC_OPTS="..."` | Garbage-collector options (default: G1 with compact object headers) |
 | `PZ_FMOD_DEBUG=1` | Use FMOD's logging libraries |
 | `PZ_FMOD_NATIVE_FORMAT=1` | Keep the game's own 5.1 / 32 kHz audio format instead of 48 kHz stereo |
 | `PZ_JAVA_OPTS="..."` | Extra JVM options |

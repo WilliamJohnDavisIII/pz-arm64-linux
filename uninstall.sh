@@ -12,7 +12,7 @@ if [ -f "$STATE/workshop-mods.txt" ]; then
   while IFS= read -r n; do [ -n "$n" ] && rm -rf -- "$HOME/Zomboid/mods/$n"; done < "$STATE/workshop-mods.txt"
 fi
 rm -rf "$PZA" "$STATE"
-rm -f "$BIN/zomboid" "$APPS/pz-arm64.desktop" "$HOME/.config/pipewire/pipewire-pulse.conf.d/50-pz-fmod.conf"
+rm -f "$BIN/zomboid" "$APPS/pz-arm64.desktop" "$APPS/pz-arm64-online.desktop" "$HOME/.config/pipewire/pipewire-pulse.conf.d/50-pz-fmod.conf"
 # ZombieBuddy.jar copied into the game folder by the launcher (Steam's "verify files" would also remove it).
 [ -n "$GAME" ] && rm -f "$GAME/ZombieBuddy.jar"
 echo "Removed pz-arm64-linux."

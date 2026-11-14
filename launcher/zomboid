@@ -52,6 +52,13 @@ while IFS= read -r n; do
 done < "$HL"
 printf '%s\n' "${!want[@]}" | sort > "$HL"
 
+# 16K-page kernel: single-player (PZ_NOSTEAM=1, the "Project Zomboid" entry) runs directly
+# on the host through pzldr; online play needs the VM because Steam runs there.
+# PZ_USE_VM=1 forces the VM for single-player too.
+if [ "$USE_MUVM" = 1 ] && [ -n "$PZ_NOSTEAM" ] && [ -z "$PZ_USE_VM" ] && [ -f "$PZA/natives16k/libpzldr.so" ]; then
+  PZ_NATIVE=1 exec "$PZA/run-pz.sh" "$@"
+fi
+
 # Online play and Workshop need the Steam client running in the same VM.
 if [ -z "$PZ_NOSTEAM" ] && [ -n "$STEAM_CMD" ] && ! pgrep -f 'muvm.*steam' >/dev/null && ! pgrep -x steam >/dev/null; then
   setsid -f bash -c "$STEAM_CMD -silent" >/dev/null 2>&1
@@ -62,11 +69,12 @@ if [ "$USE_MUVM" = 1 ]; then
   ENVS=()
   while IFS='=' read -r k _; do ENVS+=(-e "$k=${!k}"); done < <(env | grep -E '^PZ_[A-Z0-9_]*=')
   # muvm's default VM size is 80% of RAM. Linux inside the VM keeps game files
-  # it has read in its cache, and the host cannot reclaim that memory, so a big
-  # VM slowly takes over the host until systemd-oomd kills the game. Cap it at
-  # 7 GB (or 60% of RAM on smaller machines); PZ_VM_MEM (MiB) overrides.
-  VMMEM=${PZ_VM_MEM:-$(awk '/^MemTotal/{m=int($2/1024*0.6); print (m<7168?m:7168)}' /proc/meminfo)}
-  exec muvm --mem="$VMMEM" "${ENVS[@]}" -- "$PZA/run-pz.sh" "$@"
+  # it has read in its cache and never hands those pages back, so the VM would
+  # slowly take over the host. vm-cachetrim.sh (run as root in the guest) drops
+  # that cache every 15 s so the memory returns to the host, and the VM is capped
+  # at 8 GB (or 60% of RAM on smaller machines); PZ_VM_MEM (MiB) overrides.
+  VMMEM=${PZ_VM_MEM:-$(awk '/^MemTotal/{m=int($2/1024*0.6); print (m<8192?m:8192)}' /proc/meminfo)}
+  exec muvm --mem="$VMMEM" -x "$PZA/vm-cachetrim.sh" "${ENVS[@]}" -- "$PZA/run-pz.sh" "$@"
 else
   exec "$PZA/run-pz.sh" "$@"
 fi

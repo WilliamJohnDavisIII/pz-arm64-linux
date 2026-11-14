@@ -76,7 +76,24 @@ g++ -std=c++17 -O2 -fPIC -shared -Wall -Wno-non-virtual-dtor -Wno-unused-functio
   -o "$OUT.new/libZNetJNI64.so" "$SRC"/steam/*.cpp \
   -L"$OUT.new" -l:libZNetNoSteam64.so -l:libRakNet64.so -ldl -Wl,-rpath,'$ORIGIN' -Wl,--no-undefined
 
-rm -rf "$OUT.old"; [ -d "$OUT" ] && mv "$OUT" "$OUT.old"
-mv "$OUT.new" "$OUT"; rm -rf "$OUT.old" "$B"
+# No-VM mode for 16K-page kernels: glibc can't map the Android libs (their segments are only
+# 4K-aligned), so pzldr loads them. natives16k/ holds pzldr and, per Android lib, a normal
+# stub with the same Java_* exports that forwards to the real lib (in natives/, the
+# patched copy) once Java loads it.
+N16=$PZA/natives16k
+say "building the no-VM loader (pzldr) and its stubs"
+rm -rf "$N16.new"; mkdir -p "$N16.new/android"
+gcc -O2 -fPIC -shared -Wall -o "$N16.new/libpzldr.so" "$SRC/pzldr/pzldr.c" -ldl -lpthread
+for f in "$OUT.new"/*.so; do
+  b=$(basename "$f")
+  [ -e "$AND/$b" ] || continue                      # only the game's Android libs
+  python3 -I "$PZA/tools/gen-stub.py" "$f" "$B/stub_$b.c" >/dev/null
+  gcc -O2 -fPIC -shared -Wall $JI -I"$SRC/pzldr" -o "$N16.new/$b" "$B/stub_$b.c" \
+    -L"$N16.new" -lpzldr -Wl,-rpath,'$ORIGIN'
+  ln -s "../../natives/$b" "$N16.new/android/$b"
+done
+
+rm -rf "$OUT.old" "$N16.old"; [ -d "$OUT" ] && mv "$OUT" "$OUT.old"; [ -d "$N16" ] && mv "$N16" "$N16.old"
+mv "$OUT.new" "$OUT"; mv "$N16.new" "$N16"; rm -rf "$OUT.old" "$N16.old" "$B"
 "$PZA/tools/stamp.sh" > "$PZA/natives.stamp"
 say "natives ready"
